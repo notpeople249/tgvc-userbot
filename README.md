@@ -11,6 +11,8 @@ and [Pyrogram Smart Plugin](https://docs.pyrogram.org/topics/smart-plugins)
 It's recommended to use [tgmusicbot](https://github.com/callsmusic/tgmusicbot)
 along with this userbot.
 
+This branch changes the prefix for all bot's command (except for /repo) from "!" or "/" to "=", and change some permission level for `player.py`.
+
 ## Deploy to Heroku
 
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/callsmusic/tgvc-userbot/tree/dev)
