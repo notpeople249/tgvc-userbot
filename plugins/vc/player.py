@@ -36,42 +36,57 @@ How to use:
 import asyncio
 import os
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
+from PIL import Image
 
 # noinspection PyPackageRequirements
 import ffmpeg
 from pyrogram import Client, filters, emoji
 from pyrogram.methods.messages.download_media import DEFAULT_DOWNLOAD_DIR
-from pyrogram.types import Message
+from pyrogram.types import Message, Audio
 from pytgcalls import GroupCall
+from youtube_dl import YoutubeDL
 
 DELETE_DELAY = 8
 DURATION_AUTOPLAY_MIN = 10
 DURATION_PLAY_HOUR = 3
+TG_THUMB_MAX_LENGTH = 320
+
+REGEX_SITES = (
+    r"^((?:https?:)?\/\/)"
+    r"?((?:www|m)\.)"
+    r"?((?:youtube\.com|youtu\.be|soundcloud\.com|mixcloud\.com))"
+    r"(\/)([-a-zA-Z0-9()@:%_\+.~#?&//=]*)([\w\-]+)(\S+)?$"
+)
+REGEX_EXCLUDE_URL = (
+    r"\/channel\/|\/playlist\?list=|&list=|\/sets\/"
+)
 
 USERBOT_HELP = f"""{emoji.LABEL}  **Common Commands**:
 __available to group members of current voice chat__
-__starts with ? (question mark)__
+__starts with = (equal sign)__
 
-\u2022 **?play**  reply with an audio to play/queue it, or show playlist
-\u2022 **?pause** pause playing
-\u2022 `?resume` resume playing
-\u2022 `?current`  show current playing time of current track
-\u2022 `?replay`  play from the beginning
-\u2022 `?help`  show help for commands
+\u2022 **=play**  reply with an audio to play/queue it, or show playlist
+\u2022 **=pause** pause playing
+\u2022 `=resume` resume playing
+\u2022 `=current`  show current playing time of current track
+\u2022 `=replay`  play from the beginning
+\u2022 `=link (youtube link)`  play music from youtube link
+\u2022 `=help`  show help for commands
 
 
 {emoji.LABEL}  **Admin Commands**:
 __available to userbot account itself and its contacts__
-__starts with ? (question mark)__
+__starts with = (equal sign)__
 
-\u2022 `?skip` [n] ...  skip current or n where n >= 2
-\u2022 `?join`  join voice chat of current group
-\u2022 `?leave`  leave current voice chat
-\u2022 `?stop`  stop playing
-\u2022 `?vc`  check which VC is joined
-\u2022 `?clean`  remove unused RAW PCM files
-\u2022 `?mute`  mute the VC userbot
-\u2022 `?unmute`  unmute the VC userbot
+\u2022 `=skip` [n] ...  skip current or n where n >= 2
+\u2022 `=join`  join voice chat of current group
+\u2022 `=leave`  leave current voice chat
+\u2022 `=stop`  stop playing
+\u2022 `=vc`  check which VC is joined
+\u2022 `=clean`  remove unused RAW PCM files
+\u2022 `=mute`  mute the VC userbot
+\u2022 `=unmute`  unmute the VC userbot
 
 __Credit to original creator:__
 \u2022 `/repo`  show git repository of the userbot
@@ -79,8 +94,7 @@ __Credit to original creator:__
 
 USERBOT_REPO = f"""{emoji.ROBOT} **Telegram Voice Chat UserBot**
 
-- Onwer Repository: [GitHub](https://github.com/callsmusic/tgvc-userbot)
-- License: AGPL-3.0-or-later"""
+- Fuck up, don't ask."""
 
 # - Pyrogram filters
 
@@ -170,7 +184,7 @@ async def playout_ended_handler(group_call, filename):
     filters.group
     & ~filters.edited
     & current_vc
-    & (filters.regex("^(\\?)play$") | filters.audio)
+    & (filters.regex("^=play$") | filters.audio)
 )
 async def play_track(client, m: Message):
     group_call = mp.group_call
@@ -229,7 +243,7 @@ async def play_track(client, m: Message):
 
 @Client.on_message(main_filter
                    & current_vc
-                   & filters.regex("^(\\?)current$"))
+                   & filters.regex("^=current$"))
 async def show_current_playing_time(client, m: Message):
     start_time = mp.start_time
     playlist = mp.playlist
@@ -250,7 +264,7 @@ async def show_current_playing_time(client, m: Message):
 
 @Client.on_message(main_filter
                    & (self_or_contact_filter | current_vc)
-                   & filters.regex("^(\\?)help$"))
+                   & filters.regex("^=help$"))
 async def show_help(client, m: Message):
     if mp.msg.get('help') is not None:
         await mp.msg['help'].delete()
@@ -261,7 +275,7 @@ async def show_help(client, m: Message):
 @Client.on_message(main_filter
                    & self_or_contact_filter
                    & current_vc
-                   & filters.command("skip", prefixes="?"))
+                   & filters.command("skip", prefixes="="))
 async def skip_track(client, m: Message):
     playlist = mp.playlist
     if len(m.command) == 1:
@@ -292,7 +306,7 @@ async def skip_track(client, m: Message):
 
 @Client.on_message(main_filter
                    & self_or_contact_filter
-                   & filters.regex("^\\?join$"))
+                   & filters.regex("^=join$"))
 async def join_group_call(client, m: Message):
     group_call = mp.group_call
     group_call.client = client
@@ -306,7 +320,7 @@ async def join_group_call(client, m: Message):
 @Client.on_message(main_filter
                    & self_or_contact_filter
                    & current_vc
-                   & filters.regex("^\\?leave$"))
+                   & filters.regex("^=leave$"))
 async def leave_voice_chat(client, m: Message):
     group_call = mp.group_call
     mp.playlist.clear()
@@ -317,7 +331,7 @@ async def leave_voice_chat(client, m: Message):
 
 @Client.on_message(main_filter
                    & self_or_contact_filter
-                   & filters.regex("^\\?vc$"))
+                   & filters.regex("^=vc$"))
 async def list_voice_chat(client, m: Message):
     group_call = mp.group_call
     if group_call.is_connected:
@@ -336,7 +350,7 @@ async def list_voice_chat(client, m: Message):
 @Client.on_message(main_filter
                    & self_or_contact_filter
                    & current_vc
-                   & filters.regex("^\\?stop$"))
+                   & filters.regex("^=stop$"))
 async def stop_playing(_, m: Message):
     group_call = mp.group_call
     group_call.stop_playout()
@@ -348,7 +362,7 @@ async def stop_playing(_, m: Message):
 
 @Client.on_message(main_filter
                    & current_vc
-                   & filters.regex("^\\?replay$"))
+                   & filters.regex("^=replay$"))
 async def restart_playing(_, m: Message):
     group_call = mp.group_call
     if not mp.playlist:
@@ -364,7 +378,7 @@ async def restart_playing(_, m: Message):
 
 @Client.on_message(main_filter
                    & current_vc
-                   & filters.regex("^\\?pause"))
+                   & filters.regex("^=pause"))
 async def pause_playing(_, m: Message):
     mp.group_call.pause_playout()
     await mp.update_start_time(reset=True)
@@ -376,7 +390,7 @@ async def pause_playing(_, m: Message):
 
 @Client.on_message(main_filter
                    & current_vc
-                   & filters.regex("^\\?resume"))
+                   & filters.regex("^=resume"))
 async def resume_playing(_, m: Message):
     mp.group_call.resume_playout()
     reply = await m.reply_text(f"{emoji.PLAY_OR_PAUSE_BUTTON} resumed",
@@ -390,7 +404,7 @@ async def resume_playing(_, m: Message):
 @Client.on_message(main_filter
                    & self_or_contact_filter
                    & current_vc
-                   & filters.regex("^\\?clean$"))
+                   & filters.regex("^=clean$"))
 async def clean_raw_pcm(client, m: Message):
     download_dir = os.path.join(client.workdir, DEFAULT_DOWNLOAD_DIR)
     all_fn: list[str] = os.listdir(download_dir)
@@ -411,7 +425,7 @@ async def clean_raw_pcm(client, m: Message):
 @Client.on_message(main_filter
                    & self_or_contact_filter
                    & current_vc
-                   & filters.regex("^\\?mute$"))
+                   & filters.regex("^=mute$"))
 async def mute(_, m: Message):
     group_call = mp.group_call
     group_call.set_is_mute(True)
@@ -422,12 +436,129 @@ async def mute(_, m: Message):
 @Client.on_message(main_filter
                    & self_or_contact_filter
                    & current_vc
-                   & filters.regex("^\\?unmute$"))
+                   & filters.regex("^=unmute$"))
 async def unmute(_, m: Message):
     group_call = mp.group_call
     group_call.set_is_mute(False)
     reply = await m.reply_text(f"{emoji.SPEAKER_MEDIUM_VOLUME} unmuted")
     await _delay_delete_messages((reply, m), DELETE_DELAY)
+
+
+@Client.on_message(main_filter
+                   & filters.regex(REGEX_SITES)
+                   & ~filters.regex(REGEX_EXCLUDE_URL))
+async def music_downloader(client: Client, message: Message):
+    await _fetch_and_send_music(client, message)
+
+
+async def _fetch_and_send_music(client: Client, message: Message):
+    # await message.reply_chat_action("typing")
+    processing = await message.reply_text("Processing Youtube video...")
+    try:
+        ydl_opts = {
+            'format': 'bestaudio',
+            'outtmpl': 'link/%(title)s - %(extractor)s-%(id)s.%(ext)s',
+            'writethumbnail': True
+        }
+        ydl = YoutubeDL(ydl_opts)
+        info_dict = ydl.extract_info(message.text, download=False)
+
+        if info_dict['duration'] > (DURATION_PLAY_HOUR * 60 * 60):
+            reply = await message.reply_text(
+                f"{emoji.ROBOT} audio which duration longer than "
+                f"{str(DURATION_PLAY_HOUR)} hours won't be added to playlist"
+            )
+            await _delay_delete_messages((reply,), DELETE_DELAY)
+            return
+        d_status = await message.reply_text("Downloading...", quote=True,
+                                            disable_notification=True)
+        ydl.process_info(info_dict)
+        audio_file = ydl.prepare_filename(info_dict)
+        task = asyncio.create_task(_upload_audio(client, message, info_dict,
+                                                 audio_file))
+        await message.reply_chat_action("upload_document")
+        await d_status.delete()
+        while not task.done():
+            await asyncio.sleep(4)
+            # await message.reply_chat_action("upload_document")
+        # await message.reply_chat_action("cancel")
+        audio = task.result()
+        message.audio = audio
+        await processing.delete()
+
+        await play_track(client, message)
+
+        if message.chat.type == "private":
+            await message.delete()
+    except Exception as e:
+        await message.reply_text(repr(e))
+
+
+def _youtube_video_not_music(info_dict):
+    if info_dict['extractor'] == 'youtube' \
+            and 'Music' not in info_dict['categories']:
+        return True
+    return False
+
+
+async def _upload_audio(client, message: Message, info_dict, audio_file):
+
+    basename = audio_file.rsplit(".", 1)[-2]
+    if info_dict['ext'] == 'webm':
+        audio_file_opus = basename + ".opus"
+        ffmpeg.input(audio_file).output(audio_file_opus, codec="copy").run()
+        os.remove(audio_file)
+        audio_file = audio_file_opus
+    thumbnail_url = info_dict['thumbnail']
+    if os.path.isfile(basename + ".jpg"):
+        thumbnail_file = basename + ".jpg"
+    else:
+        thumbnail_file = basename + "." + \
+            _get_file_extension_from_url(thumbnail_url)
+    squarethumb_file = basename + "_squarethumb.jpg"
+    make_squarethumb(thumbnail_file, squarethumb_file)
+    webpage_url = info_dict['webpage_url']
+    title = info_dict['title']
+    caption = f"<b><a href=\"{webpage_url}\">{title}</a></b>"
+    duration = int(float(info_dict['duration']))
+    performer = info_dict['uploader']
+    res = await client.send_audio(chat_id=-1001264801373,
+                                    audio=audio_file,
+                                    caption=caption,
+                                    duration=duration,
+                                    performer=performer,
+                                    title=title,
+                                    parse_mode='HTML',
+                                    thumb=squarethumb_file)
+    for f in (audio_file, thumbnail_file, squarethumb_file):
+        os.remove(f)
+    return res.audio
+
+
+def _get_file_extension_from_url(url):
+    url_path = urlparse(url).path
+    basename = os.path.join(url_path)
+    return basename.split(".")[-1]
+
+
+def make_squarethumb(thumbnail, output):
+    """Convert thumbnail to square thumbnail"""
+    # https://stackoverflow.com/a/52177551
+    original_thumb = Image.open(thumbnail)
+    squarethumb = _crop_to_square(original_thumb)
+    squarethumb.thumbnail((TG_THUMB_MAX_LENGTH, TG_THUMB_MAX_LENGTH),
+                          Image.ANTIALIAS)
+    squarethumb.save(output)
+
+
+def _crop_to_square(img):
+    width, height = img.size
+    length = min(width, height)
+    left = (width - length) / 2
+    top = (height - length) / 2
+    right = (width + length) / 2
+    bottom = (height + length) / 2
+    return img.crop((left, top, right, bottom))
 
 
 @Client.on_message(main_filter
