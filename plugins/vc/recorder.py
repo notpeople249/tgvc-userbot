@@ -25,7 +25,7 @@ Dependencies:
 Requirements (pip):
 - ffmpeg-python
 
-Start the userbot and send ?record to a voice chat
+Start the userbot and send !record to a voice chat
 enabled group chat to start recording for 30 seconds
 """
 import asyncio
@@ -46,7 +46,7 @@ group_call = GroupCall(None, path_to_log_file='')
                    & filters.text
                    & filters.outgoing
                    & ~filters.edited
-                   & filters.regex("^?record$"))
+                   & filters.regex("^!record$"))
 async def record_from_voice_chat(client, m: Message):
     group_call.client = client
     await group_call.start(m.chat.id)

@@ -81,10 +81,9 @@ async def generate_sysinfo(workdir):
 
 
 @Client.on_message(filters.text
-                   & self_or_contact_filter
                    & ~filters.edited
                    & ~filters.via_bot
-                   & filters.regex("\\?sysinfo$"))
+                   & filters.regex("!sysinfo$"))
 async def get_sysinfo(client, m):
     response = "**System Information**:\n"
     m_reply = await m.reply_text(f"{response}`...`")

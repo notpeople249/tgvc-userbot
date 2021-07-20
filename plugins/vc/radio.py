@@ -16,8 +16,8 @@ Radio stations:
 
 1. https://hls-01-regions.emgsound.ru/11_msk/playlist.m3u8
 
-To start replay to this message with command ?start <ID>
-To stop use ?stop command
+To start replay to this message with command !start <ID>
+To stop use !stop command
 '''
 
 
@@ -32,7 +32,7 @@ GROUP_CALLS = {}
 FFMPEG_PROCESSES = {}
 
 
-@Client.on_message(anonymous & filters.command('start', prefixes='?'))
+@Client.on_message(anonymous & filters.command('start', prefixes='!'))
 async def start(client, message: Message):
     input_filename = f'radio-{message.chat.id}.raw'
 
@@ -43,7 +43,7 @@ async def start(client, message: Message):
 
     if not message.reply_to_message or len(message.command) < 2:
         await message.reply_text(
-            'You forgot to replay list of stations or pass a station ID'
+            'You forgot to reply list of stations or pass a station ID'
         )
         return
 
@@ -80,7 +80,7 @@ async def start(client, message: Message):
     await message.reply_text(f'Radio #{station_id} is playing...')
 
 
-@Client.on_message(anonymous & filters.command('stop', prefixes='?'))
+@Client.on_message(anonymous & filters.command('stop', prefixes='!'))
 async def stop(_, message: Message):
     group_call = GROUP_CALLS.get(message.chat.id)
     if group_call:
