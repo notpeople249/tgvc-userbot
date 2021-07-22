@@ -15,7 +15,7 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-!sysinfo use psutil to get system information"""
+?sysinfo use psutil to get system information"""
 from datetime import datetime
 
 import psutil

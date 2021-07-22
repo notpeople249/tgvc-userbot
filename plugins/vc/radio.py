@@ -43,7 +43,7 @@ async def start(client, message: Message):
 
     if not message.reply_to_message or len(message.command) < 2:
         await message.reply_text(
-            'You forgot to replay list of stations or pass a station ID'
+            'You forgot to reply list of stations or pass a station ID'
         )
         return
 
